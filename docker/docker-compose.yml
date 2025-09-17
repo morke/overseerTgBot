@@ -1,0 +1,11 @@
+services:
+  overseerr-tg-bot:
+    image: overseerr-tg-bot:latest
+    restart: unless-stopped
+    environment:
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN}
+      OVERSEERR_URL: ${OVERSEERR_URL}
+      OVERSEERR_API_KEY: ${OVERSEERR_API_KEY}
+      TMDB_IMAGE_BASE: ${TMDB_IMAGE_BASE:-https://image.tmdb.org/t/p/w500}
+      REQUEST_4K: ${REQUEST_4K:-false}
+      OWNER_TELEGRAM_USER_ID: ${OWNER_TELEGRAM_USER_ID:-}
