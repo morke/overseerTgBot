@@ -7,7 +7,6 @@ venv/
 ENV/
 
 .env
-.env.*
 
 .Python
 build/

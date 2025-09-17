@@ -15,7 +15,7 @@ from telegram.ext import (
     filters,
 )
 
-from config import (
+from app.config import (
     DEFAULT_IS_4K,
     OWNER_TELEGRAM_USER_ID,
     OVERSEERR_API_KEY,
@@ -24,7 +24,7 @@ from config import (
     TMDB_IMAGE_BASE,
     validate_config,
 )
-from overseerr_client import OverseerrClient
+from app.overseerr_client import OverseerrClient
 
 
 logging.basicConfig(level=logging.INFO)
@@ -45,7 +45,7 @@ def _is_available(item: Dict[str, Any]) -> bool:
     if isinstance(status, str):
         return status.upper() == "AVAILABLE"
     if isinstance(status, int):
-        return status >= 4  # heuristic to treat as available
+        return status >= 4
     return False
 
 
@@ -74,7 +74,6 @@ def _extract_imdb_and_rt(details: Dict[str, Any]) -> Dict[str, Optional[str]]:
     rt_url = None
 
     if isinstance(ratings, dict):
-        # Common shapes
         imdb_block = ratings.get("imdb") or ratings.get("IMDb") or ratings.get("imdbRating")
         if isinstance(imdb_block, dict):
             imdb_rating = (
@@ -82,11 +81,9 @@ def _extract_imdb_and_rt(details: Dict[str, Any]) -> Dict[str, Optional[str]]:
                 or str(imdb_block.get("rating"))
                 or str(imdb_block.get("score"))
             )
-            # Some combined endpoints may include a direct URL
             if not imdb_id:
                 maybe_url = imdb_block.get("url")
                 if isinstance(maybe_url, str) and maybe_url.startswith("http"):
-                    # Derive imdb_id from URL if possible
                     try:
                         imdb_id = maybe_url.rstrip("/").split("/")[-1]
                     except Exception:
@@ -94,10 +91,8 @@ def _extract_imdb_and_rt(details: Dict[str, Any]) -> Dict[str, Optional[str]]:
         elif isinstance(imdb_block, (int, float, str)):
             imdb_rating = str(imdb_block)
 
-        # Rotten Tomatoes combined shapes
         rt_block = ratings.get("rottenTomatoes") or ratings.get("rotten_tomatoes") or ratings.get("rotten")
         if isinstance(rt_block, dict):
-            # Nested critics/audience blocks or flat fields
             critics = rt_block.get("critics") if isinstance(rt_block.get("critics"), dict) else None
             audience = rt_block.get("audience") if isinstance(rt_block.get("audience"), dict) else None
             if critics:
@@ -108,7 +103,6 @@ def _extract_imdb_and_rt(details: Dict[str, Any]) -> Dict[str, Optional[str]]:
                 rt_popcorn = str(audience.get("score") or audience.get("rating") or audience.get("value"))
                 if not rt_url:
                     rt_url = audience.get("url")
-            # Flat fallbacks
             if not rt_tomato:
                 rt_tomato = (
                     str(rt_block.get("tomatometer"))
@@ -123,7 +117,6 @@ def _extract_imdb_and_rt(details: Dict[str, Any]) -> Dict[str, Optional[str]]:
             if not rt_url:
                 rt_url = rt_block.get("url")
 
-        # Overseerr /{movie|tv}/{id}/ratings returns a FLAT RT object
         if not (rt_tomato or rt_popcorn):
             if any(k in ratings for k in ("criticsScore", "audienceScore")):
                 if ratings.get("criticsScore") is not None:
@@ -146,7 +139,6 @@ def _extract_imdb_and_rt(details: Dict[str, Any]) -> Dict[str, Optional[str]]:
 
 
 def _extract_trailer_url(details: Dict[str, Any]) -> Optional[str]:
-    # Prefer explicit relatedVideos.url when provided by Overseerr details endpoint
     related = details.get("relatedVideos")
     if isinstance(related, list):
         for preferred_type in ("Trailer", "Teaser"):
@@ -158,7 +150,6 @@ def _extract_trailer_url(details: Dict[str, Any]) -> Optional[str]:
             url = v.get("url")
             if v.get("site") == "YouTube" and isinstance(url, str):
                 return url
-    # Fallback: TMDb videos structure if present
     videos = details.get("videos") or {}
     results = videos.get("results") if isinstance(videos, dict) else None
     if isinstance(results, list):
@@ -177,12 +168,10 @@ def _append_enrichment_to_caption(base_caption: str, details: Dict[str, Any]) ->
     rates = _extract_imdb_and_rt(details)
     parts.append("")
 
-    # IMDb line (as link, optionally with rating)
     if rates.get("imdb_url"):
         label = "IMDb" if not (rates.get("imdb_rating") and rates["imdb_rating"] not in ("None", "nan")) else f"IMDb: {rates['imdb_rating']}"
         parts.append(f"<a href=\"{rates['imdb_url']}\">{label}</a>")
 
-    # Rotten Tomatoes lines with icons, link if URL is known
     rt_url = rates.get("rt_url") or "https://www.rottentomatoes.com/"
     if rates.get("rt_tomato") and rates["rt_tomato"] not in ("None", "nan"):
         tomato_line = f"🍅 Tomatometer : {rates['rt_tomato']}%"
@@ -205,10 +194,8 @@ def _build_keyboard(item: Dict[str, Any]) -> Optional[InlineKeyboardMarkup]:
     if media_id is None:
         return None
     buttons: List[InlineKeyboardButton] = []
-    # Show Download only if not yet available
     if not _is_available(item):
         buttons.append(InlineKeyboardButton("⏬ Download", callback_data=f"req|{media_type}|{media_id}"))
-    # Show Recommendations for TV and Movie items
     if media_type in ("tv", "movie"):
         buttons.append(InlineKeyboardButton("👀 Recommendations", callback_data=f"rec|{media_type}|{media_id}"))
     if not buttons:
@@ -257,24 +244,20 @@ async def on_query(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         await update.effective_message.reply_text("No results found.")
         return
 
-    # Filter only movie/tv and limit
     filtered = [r for r in results if (r.get("mediaType") or r.get("media_type")) in ("movie", "tv")]
     if not filtered:
         filtered = results
     for item in filtered[:10]:
         poster_path = item.get("posterPath") or item.get("poster_path")
         base_caption = _build_caption(item)
-        # Try to enrich caption with ratings, trailer and overview
         media_type = item.get("mediaType") or item.get("media_type") or "movie"
         details: Dict[str, Any] = {}
         try:
             if item.get("id") is not None:
                 details = await client.get_details(media_type, int(item["id"]))
-                # Fetch ratings from Overseerr ratings endpoint and merge if available
                 try:
                     ratings = await client.get_ratings(media_type, int(item["id"]))
                     if isinstance(ratings, dict) and ratings:
-                        # Merge into details under 'ratings'
                         existing = details.get("ratings") if isinstance(details, dict) else None
                         if isinstance(existing, dict):
                             existing.update(ratings)
@@ -293,7 +276,6 @@ async def on_query(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             else:
                 await update.effective_message.reply_text(caption, reply_markup=keyboard, parse_mode=ParseMode.HTML)
         except Exception:  # noqa: BLE001
-            # Fallback to text if photo fails
             await update.effective_message.reply_text(caption, reply_markup=keyboard, parse_mode=ParseMode.HTML)
 
 
@@ -326,7 +308,6 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
                 await query.message.reply_text("No recommendations found.")
                 return
 
-            # Show up to 10 recommendations
             for rec_item in rec_results[:10]:
                 poster_path = rec_item.get("posterPath") or rec_item.get("poster_path")
                 base_caption = _build_caption(rec_item)

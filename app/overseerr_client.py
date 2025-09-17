@@ -25,7 +25,6 @@ class OverseerrClient:
 
     async def search(self, query: str) -> Dict[str, Any]:
         session = await self._get_session()
-        # Overseerr requires the 'query' param to be URL-encoded (spaces as %20, no reserved chars)
         encoded = quote(query.strip(), safe="")
         url = f"{self.base_url}/api/v1/search?query={encoded}"
         async with session.get(url) as resp:
@@ -108,7 +107,4 @@ class OverseerrClient:
                 return {"results": []}
             resp.raise_for_status()
             return await resp.json()
-
-
-# (OMDb fallback removed)
 

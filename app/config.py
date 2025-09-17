@@ -11,7 +11,6 @@ OVERSEERR_API_KEY = os.getenv("OVERSEERR_API_KEY")
 TMDB_IMAGE_BASE = os.getenv("TMDB_IMAGE_BASE", "https://image.tmdb.org/t/p/w500").rstrip("/")
 DEFAULT_IS_4K = (os.getenv("REQUEST_4K", "false").strip().lower() in ("1", "true", "yes", "y"))
 OWNER_TELEGRAM_USER_ID = os.getenv("OWNER_TELEGRAM_USER_ID")
-# OMDB_API_KEY removed
 
 
 def validate_config() -> None:

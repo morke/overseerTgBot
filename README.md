@@ -25,7 +25,7 @@ pip install -r requirements.txt
 
 ```bash
 export $(grep -v '^#' .env | xargs) # or use direnv/dotenv
-python bot.py
+python -m app
 ```
 
 Send a movie or TV title to the bot. It returns up to 10 results with poster, year, type, and library status. The “⏬ Download” button creates a request in Overseerr and auto-approves it. For TV and movies, a “👀 Recommendations” button shows up to 10 recommendations with the same formatting.
@@ -39,7 +39,7 @@ Send a movie or TV title to the bot. It returns up to 10 results with poster, ye
 1. Build image locally (optional):
 
 ```bash
-docker build -t overseerr-tg-bot:latest .
+docker build -f docker/Dockerfile -t overseerr-tg-bot:latest .
 ```
 
 2. Environment variables (set via Portainer UI or docker-compose):

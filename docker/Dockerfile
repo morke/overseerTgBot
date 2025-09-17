@@ -14,6 +14,5 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY . .
 
-# Default to polling mode
-CMD ["python", "bot.py"]
+CMD ["python", "-m", "app"]
 
